@@ -167,4 +167,4 @@ a {
 }
 
 /* The hearth — embers rising over the cloth (self-contained in this repo). */
-.ember-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.ember-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5; mix-blend-mode: screen; }

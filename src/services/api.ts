@@ -23,6 +23,20 @@ const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 export const demoMode = import.meta.env.VITE_DEMO === '1';
 
+export interface YmirUsage {
+  window_days: number;
+  sources: Record<string, { messages?: number; input?: number; output?: number; cache_read?: number; cache_write?: number; error?: string }>;
+  totals: { messages: number; input: number; output: number; cache_read: number; cache_write: number; total: number; cache_hit_ratio: number };
+  by_model: Array<{ source: string; model: string; messages: number; input: number; output: number }>;
+  gate?: {
+    totals: { runs: number; success: number; fail: number; running: number; tokens: number; cost: number };
+    usage: { input: number; output: number; cache_read: number; cache_write: number; total: number };
+    providers: { local: any; online: any; per_model: any[] };
+    by_chain: any[];
+    by_model: any[];
+  };
+}
+
 export interface RuntimeInfo {
   digest: string;
   markers: { lock: string; started: boolean; armed: boolean };
@@ -69,12 +83,22 @@ function noteUnauthorized(path: string, status: number): void {
   }
 }
 
+/** The desktop seat (Electron) marks its requests; the gate honours the marker only over loopback. */
+export function isDesktopSeat(): boolean {
+  const w = window as unknown as { ymirDesktop?: { desktop?: boolean } };
+  return w.ymirDesktop?.desktop === true;
+}
+
+function surfaceHeaders(extra?: Record<string, string>): Record<string, string> {
+  return isDesktopSeat() ? { ...(extra ?? {}), 'x-ymir-surface': 'desktop' } : (extra ?? {});
+}
+
 async function get<T>(path: string): Promise<T> {
   // Bound every call so one slow endpoint can never stall a combined load.
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), 10_000);
   try {
-    const res = await fetch(`${BASE}${path}`, { credentials: 'include', signal: ctrl.signal });
+    const res = await fetch(`${BASE}${path}`, { credentials: 'include', signal: ctrl.signal, headers: surfaceHeaders() });
     noteUnauthorized(path, res.status);
     if (!res.ok) throw new Error(`${path} → ${res.status}`);
     return (await res.json()) as T;
@@ -87,7 +111,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...surfaceHeaders() },
     body: JSON.stringify(body),
   });
   noteUnauthorized(path, res.status);
@@ -324,6 +348,7 @@ export const gateApi = {
       `/api/file?realm=${encodeURIComponent(realm)}&path=${encodeURIComponent(path)}`,
     ),
   skills: () => get<SkillDef[]>('/api/skills'),
+  usage: () => get<YmirUsage>('/api/usage'),
   runtime: () => get<RuntimeInfo>('/api/runtime'),
   cron: () => get<CronInfo>('/api/cron'),
   loaders: () => get<LoaderRow[]>('/api/loaders'),

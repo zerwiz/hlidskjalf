@@ -1543,7 +1543,30 @@ function cookieToken(req: Request): string {
   const m = c.match(/(?:^|;\s*)ymir_session=([^;]+)/);
   return m ? m[1] : '';
 }
+
+/** The peer address per request — recorded at the top of the handler. */
+const REQUEST_IP = new WeakMap<Request, string>();
+
+/**
+ * The desktop seat (Electron) is local and trusted, so it is never asked to log
+ * in: the shell loads this app from 127.0.0.1 and its preload marks every
+ * request with `x-ymir-surface: desktop`. The marker alone proves nothing — a
+ * web caller could send the header too — so it is honoured ONLY when the request
+ * genuinely arrives over loopback, which a remote client never does. The web
+ * door keeps its lock.
+ */
+function isDesktopSeat(req: Request): boolean {
+  const marked =
+    (req.headers.get('x-ymir-surface') ?? '') === 'desktop' ||
+    new URL(req.url).searchParams.get('surface') === 'desktop';
+  if (!marked) return false;
+  const ip = REQUEST_IP.get(req) ?? '';
+  const bare = ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
+  return bare === '127.0.0.1' || bare === '::1';
+}
+
 function isAuthed(req: Request): boolean {
+  if (isDesktopSeat(req)) return true;
   const t = cookieToken(req);
   return !!t && SESSIONS.has(t);
 }
@@ -1708,6 +1731,7 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     const p = url.pathname;
+    REQUEST_IP.set(req, server.requestIP(req)?.address ?? '');
     try {
       if (p === '/api/login' && req.method === 'POST') {
         const b = (await req.json().catch(() => ({}))) as { username?: string; password?: string };
@@ -1832,13 +1856,49 @@ const server = Bun.serve({
       }
       if (GATE_AUTH && p.startsWith('/api/') && !isAuthed(req)) return json({ error: 'unauthorized' }, 401);
       if (p === '/api/health') return json({ ok: true, root: ROOT, sessions: orders().length });
+      if (p === '/api/usage') {
+        // What the HARNESSES spent — opencode and pi — not only the smithy's runs.
+        // Memoised for a minute: the aggregate is one bounded SQL statement over a
+        // 37 GB store, and a panel must not pay for it on every poll.
+        return json(await memoAsync('usage', 60_000, async () => {
+          try {
+            const { execFileSync } = await import('node:child_process');
+            const script = new URL('./hlidskjalf-usage.sh', import.meta.url).pathname;
+            const out = execFileSync(script, ['--days', process.env.YMIR_USAGE_DAYS ?? '30'], { timeout: 60_000 }).toString().trim();
+            return JSON.parse(out);
+          } catch (e) {
+            return { error: String(e).slice(0, 120) };
+          }
+        }));
+      }
       if (p === '/api/worktrees') return json(await worktrees());
-      if (p === '/api/me') return json({ login: loginOf(req) ?? 'operator', realm: 'work' });
+      if (p === '/api/me') {
+        // The desktop seat wears the operator's own name without a web login —
+        // the trusted marker, honoured only over loopback.
+        const seat =
+          isDesktopSeat(req) && GATE_AUTH ? GATE_AUTH.split(':')[0] : (loginOf(req) ?? 'operator');
+        return json({ login: seat, realm: 'work' });
+      }
       if (p === '/api/workspace') {
         const realm = url.searchParams.get('realm') ?? 'work';
         return json({ realm, path: workspaceRoot(realm) });
       }
-      if (p === '/api/agents') return json(agents());
+      if (p === '/api/agents') {
+        // WHO IS STANDING, not who could be. The connector reads herdr's live
+        // pane list, so every opencode and pi session appears on the board with
+        // its kind, state and task. The roster is the fallback, never the answer.
+        try {
+          const { execFileSync } = await import('node:child_process');
+          const script = new URL('./hlidskjalf-agents.sh', import.meta.url).pathname;
+          const out = execFileSync(script, [], { timeout: 4000 }).toString().trim();
+          if (out.startsWith('[')) {
+            return new Response(out, { headers: { 'content-type': 'application/json' } });
+          }
+        } catch {
+          // herdr absent or the connector failed: fall through to the roster
+        }
+        return json(agents());
+      }
       if (p === '/api/tasks') return json(tasks());
       if (p === '/api/orders') return json({ open: orders().filter((o) => o.status !== 'COMPLETED').length, orders: orders() });
       if (p === '/api/runes') return json(runes());
