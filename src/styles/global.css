@@ -165,3 +165,6 @@ a {
 .hidden {
   display: none;
 }
+
+/* The hearth — embers rising over the cloth (self-contained in this repo). */
+.ember-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }

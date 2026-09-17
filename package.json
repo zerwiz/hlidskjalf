@@ -1,6 +1,6 @@
 {
   "name": "@zerwiz/hlidskjalf",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "Hlidskjalf \u2014 Odin's high seat. The Ymir master control dashboard.",
   "scripts": {
@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "desktop": "electron ."
+    "desktop": "electron .",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.2",
