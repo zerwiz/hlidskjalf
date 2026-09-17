@@ -1,6 +1,5 @@
 {
   "name": "@zerwiz/hlidskjalf",
-  "private": true,
   "version": "0.1.1",
   "type": "module",
   "description": "Hlidskjalf — Odin's high seat. The Ymir master control dashboard.",
