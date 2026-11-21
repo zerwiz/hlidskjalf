@@ -10,6 +10,7 @@
  *   PORT=3889 bun run server/index.ts
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { isDesktopSeatRequest } from './desktop-seat';
 import { Database } from 'bun:sqlite';
 import { dirname, extname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -1556,13 +1557,7 @@ const REQUEST_IP = new WeakMap<Request, string>();
  * door keeps its lock.
  */
 function isDesktopSeat(req: Request): boolean {
-  const marked =
-    (req.headers.get('x-ymir-surface') ?? '') === 'desktop' ||
-    new URL(req.url).searchParams.get('surface') === 'desktop';
-  if (!marked) return false;
-  const ip = REQUEST_IP.get(req) ?? '';
-  const bare = ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
-  return bare === '127.0.0.1' || bare === '::1';
+  return isDesktopSeatRequest(req, REQUEST_IP.get(req) ?? '');
 }
 
 function isAuthed(req: Request): boolean {
