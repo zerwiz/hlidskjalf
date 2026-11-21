@@ -6,6 +6,7 @@ import { HallsChooser } from '../components/Halls';
 import { gateApi } from '../services/api';
 import { startStream } from '../services/stream';
 import { gateFromHash, useYmir } from '../state/store';
+import EmberBackground from './EmberBackground';
 
 export default function App() {
   const session = useYmir((s) => s.session);
@@ -87,6 +88,7 @@ export default function App() {
 
   return (
     <>
+      <EmberBackground />
       <Shell />
       <Overlay />
       {choosing && <HallsChooser onClose={() => setChoosing(false)} />}
